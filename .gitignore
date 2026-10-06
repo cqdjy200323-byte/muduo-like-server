@@ -24,3 +24,10 @@ Makefile
 # Temporary
 *.tmp
 *.swp
+
+# Project executables
+example/regex
+example/request
+example/timewheel
+test/client
+test/server

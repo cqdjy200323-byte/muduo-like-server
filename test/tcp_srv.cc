@@ -3,14 +3,13 @@
 
 void HandleClose(Channel* channel)
 {
-    std::cout<<"close:"<<channel->Fd()<<std::endl;
+    DBG_LOG("id:%d",channel->Fd());
     channel->Remove();
     delete channel;
 }
 
 void HandleRead(Channel* channel)
 {
-    DBG_LOG("ceshi");
     int fd=channel->Fd();
     char buf[1024]={0};
     int ret=recv(fd,buf,1023,0);
@@ -18,7 +17,7 @@ void HandleRead(Channel* channel)
     {
         return HandleClose(channel);
     }
-    std::cout<<buf<<std::endl;
+    DBG_LOG("%s",buf);
     channel->EnableWrite();
 }
 
@@ -35,16 +34,17 @@ void HandleWrite(Channel* channel)
     
 }
 
-void HandleErvent(Channel* channel)
+void HandleErvent(EventLoop* loop,Channel* channel,uint64_t id)
 {
-    std::cout<<"任意事件被触发"<<std::endl;
+   loop->TimerRefresh(id);
 }
 
 
 
 
-void Acceptor(Poller* poller,Channel* lst_channel)
+void Acceptor(EventLoop* loop,Channel* lst_channel)
 {
+    uint64_t id=rand()%10000;
     int fd=lst_channel->Fd();
     int newfd=accept(fd,NULL,NULL);
     SetNonBlock(newfd);
@@ -52,36 +52,31 @@ void Acceptor(Poller* poller,Channel* lst_channel)
     {
         return;
     }
-    Channel* channel=new Channel(poller,newfd);
+    Channel* channel=new Channel(loop,newfd);
     channel->SetReadCallback(std::bind(HandleRead,channel));
     channel->SetWriteCallback(std::bind(HandleWrite,channel));
     channel->SetCloseCallback(std::bind(HandleClose,channel));
-    channel->SetEventCallback(std::bind(HandleErvent,channel));
+    channel->SetEventCallback(std::bind(HandleErvent,loop,channel,id));
+    loop->TimerAdd(id,10,std::bind(HandleClose,channel));
+
     channel->EnableRead();
+
+    
+
 }
 
 int main()
 {
+    srand(time(NULL));
     Socket lst_sock;
-    Poller poller;
+    EventLoop loop;
     lst_sock.CreateServer(8080);
-    Channel channel(&poller,lst_sock.Fd());
-    channel.SetReadCallback(std::bind(Acceptor,&poller,&channel));
+    Channel channel(&loop,lst_sock.Fd());
+    channel.SetReadCallback(std::bind(Acceptor,&loop,&channel));
     channel.EnableRead();
     while(1)
     {
-        DBG_LOG("duandian");
-        std::vector<Channel*> actives;
-        DBG_LOG("duandian");
-
-        poller.poll(&actives);
-        DBG_LOG("duandian");
-
-        for(auto e: actives)
-        {
-            e->HandleEvent();
-        }
-        DBG_LOG("duandian");
+        loop.Start();
 
     }
     lst_sock.Close();
