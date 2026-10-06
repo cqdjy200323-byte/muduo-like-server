@@ -1,0 +1,26 @@
+# Build
+build/
+cmake-build-*/
+CMakeFiles/
+
+# Compiled files
+*.o
+*.so
+*.a
+*.out
+
+# CMake
+CMakeCache.txt
+cmake_install.cmake
+Makefile
+
+# IDE
+.vscode/
+.idea/
+
+# Logs
+*.log
+
+# Temporary
+*.tmp
+*.swp
