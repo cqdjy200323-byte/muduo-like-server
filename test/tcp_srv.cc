@@ -1,68 +1,42 @@
-#include"../source/server.hpp"
+#include "../source/server.hpp"
 
-
-void HandleClose(Channel* channel)
+std::unordered_map<uint64_t, PtrConnection> conns;
+void ConnectionClose(const PtrConnection &conn)
 {
-    DBG_LOG("id:%d",channel->Fd());
-    channel->Remove();
-    delete channel;
+    conns.erase(conn->Fd());
 }
 
-void HandleRead(Channel* channel)
+void OnConnected(const PtrConnection &conn)
 {
-    int fd=channel->Fd();
-    char buf[1024]={0};
-    int ret=recv(fd,buf,1023,0);
-    if(ret<=0)
-    {
-        return HandleClose(channel);
-    }
-    DBG_LOG("%s",buf);
-    channel->EnableWrite();
+    DBG_LOG("CONNECTED SUCESS ADDRESS:%p", conn.get());
 }
 
-void HandleWrite(Channel* channel)
+void OnMessage(const PtrConnection &conn, Buffer *buf)
 {
-    int fd=channel->Fd();
-    const char* data="hello codex";
-    int ret = send(fd,data,strlen(data),0);
-    if(ret<0)
-    {
-        return HandleClose(channel);
-    }
-    channel->DisableWrite();
-    
+    DBG_LOG("%s", buf->ReadPosition());
+    buf->MoveReadOffset(buf->ReadableSpace());
+    std::string str = "hello world!";
+    conn->Send(str.c_str(), str.size());
 }
 
-void HandleErvent(EventLoop* loop,Channel* channel,uint64_t id)
+void Acceptor(EventLoop *loop, Channel *lst_channel)
 {
-   loop->TimerRefresh(id);
-}
-
-
-
-
-void Acceptor(EventLoop* loop,Channel* lst_channel)
-{
-    uint64_t id=rand()%10000;
-    int fd=lst_channel->Fd();
-    int newfd=accept(fd,NULL,NULL);
+    uint64_t conn_id = rand() % 10000;
+    int fd = lst_channel->Fd();
+    int newfd = accept(fd, NULL, NULL);
     SetNonBlock(newfd);
-    if(newfd<0)
+    if (newfd < 0)
     {
         return;
     }
-    Channel* channel=new Channel(loop,newfd);
-    channel->SetReadCallback(std::bind(HandleRead,channel));
-    channel->SetWriteCallback(std::bind(HandleWrite,channel));
-    channel->SetCloseCallback(std::bind(HandleClose,channel));
-    channel->SetEventCallback(std::bind(HandleErvent,loop,channel,id));
-    loop->TimerAdd(id,10,std::bind(HandleClose,channel));
-
-    channel->EnableRead();
-
-    
-
+    Buffer buf;
+    PtrConnection conn(new Connection(loop, newfd, conn_id));
+    conn->SetServerCloseCallback(std::bind(ConnectionClose, std::placeholders::_1));
+    conn->SetConnetedCallback(std::bind(OnConnected, std::placeholders::_1));
+    conn->SetMessageCallback(std::bind(OnMessage, std::placeholders::_1, std::placeholders::_2));
+    conn->EnableInactiveRelease(10);
+    conn->Established();
+    conns.insert(std::make_pair(conn_id, conn));
 }
 
 int main()
@@ -71,13 +45,12 @@ int main()
     Socket lst_sock;
     EventLoop loop;
     lst_sock.CreateServer(8080);
-    Channel channel(&loop,lst_sock.Fd());
-    channel.SetReadCallback(std::bind(Acceptor,&loop,&channel));
+    Channel channel(&loop, lst_sock.Fd());
+    channel.SetReadCallback(std::bind(Acceptor, &loop, &channel));
     channel.EnableRead();
-    while(1)
+    while (1)
     {
         loop.Start();
-
     }
     lst_sock.Close();
     return 0;

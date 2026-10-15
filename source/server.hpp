@@ -21,30 +21,113 @@
 #include <thread>
 #include <sys/eventfd.h>
 #include <sys/timerfd.h>
+
 static void SetNonBlock(int fd)
 {
     int flag = fcntl(fd, F_GETFL, 0);
     fcntl(fd, F_SETFL, flag | O_NONBLOCK);
 }
 
-
 #define INF 0
 #define DBG 1
 #define ERR 2
 #define LOG_LEVEL DBG
-#define LOG(level,format, ...)do{\
-        if(level<LOG_LEVEL) break;\
-        time_t t = time(NULL);\
-        struct tm *ltm = localtime(&t);\
-        char tmp[32] = {0};\
-        strftime(tmp, 31, "%H:%M:%S", ltm);\
-        fprintf(stdout, "[%s %s:%d]" format "\n", tmp, __FILE__, __LINE__, ##__VA_ARGS__);\
-        }while(0)
+#define LOG(level, format, ...)                                                            \
+    do                                                                                     \
+    {                                                                                      \
+        if (level < LOG_LEVEL)                                                             \
+            break;                                                                         \
+        time_t t = time(NULL);                                                             \
+        struct tm *ltm = localtime(&t);                                                    \
+        char tmp[32] = {0};                                                                \
+        strftime(tmp, 31, "%H:%M:%S", ltm);                                                \
+        fprintf(stdout, "[%s %s:%d]" format "\n", tmp, __FILE__, __LINE__, ##__VA_ARGS__); \
+    } while (0)
 
-#define INF_LOG(format,...) LOG(INF,format,##__VA_ARGS__)
-#define DBG_LOG(format,...) LOG(DBG,format,##__VA_ARGS__)
-#define ERR_LOG(format,...) LOG(ERR,format,##__VA_ARGS__)
+#define INF_LOG(format, ...) LOG(INF, format, ##__VA_ARGS__)
+#define DBG_LOG(format, ...) LOG(DBG, format, ##__VA_ARGS__)
+#define ERR_LOG(format, ...) LOG(ERR, format, ##__VA_ARGS__)
 
+class Any
+{
+private:
+    class holder
+    {
+    public:
+        virtual ~holder();
+        virtual const std::type_info &tipe();
+        virtual holder *clone();
+    };
+
+    template <class T>
+    class placeholder : public holder
+    {
+    public:
+        placeholder(const T val)
+            : _val(val)
+        {
+        }
+
+        virtual const std::type_info &type()
+        {
+            return typeid(T);
+        }
+        virtual holder *clone()
+        {
+            return new placeholder(_val);
+        }
+
+    public:
+        T _val;
+    };
+    holder *_content;
+
+public:
+    Any()
+        : _content(NULL)
+    {
+    }
+    template <class T>
+    Any(const T &val)
+        : _content(new placeholder<T>(val))
+    {
+    }
+
+    Any(const Any &other)
+        : _content(other._content ? other._content->clone() : NULL)
+    {
+    }
+
+    ~Any()
+    {
+        delete _content;
+    }
+
+    Any &swap(Any &other)
+    {
+        std::swap(_content, other._content);
+        return *this;
+    }
+
+    template <class T>
+    T Swap(const T &val)
+    {
+        placeholder<T> a;
+        std::swap(_content, a);
+    }
+
+    template <class T>
+    Any &operator=(const T &val)
+    {
+        Any(val).swap(*this);
+        return *this;
+    }
+    Any &operator=(const Any &other)
+    {
+        Any(other).swap(*this);
+        return *this;
+    }
+};
 
 class Buffer
 {
@@ -221,26 +304,27 @@ public:
     }
 };
 
-
-
 #define Max_LISTEN 1024
 class Socket
-{  
+{
 private:
     int _sockfd;
+
 public:
     Socket()
-    :_sockfd(-1)
-    {}
+        : _sockfd(-1)
+    {
+    }
 
     Socket(int fd)
-    :_sockfd(fd)
-    {}
+        : _sockfd(fd)
+    {
+    }
 
     bool Create()
     {
         _sockfd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-        if(_sockfd<0)
+        if (_sockfd < 0)
         {
             ERR_LOG("CREATE SOCKET FAILED!!");
             return false;
@@ -248,7 +332,7 @@ public:
         return true;
     }
 
-    bool Bind(const std::string& ip,uint16_t port)
+    bool Bind(const std::string &ip, uint16_t port)
     {
         struct sockaddr_in addr;
         addr.sin_family = AF_INET;
@@ -256,24 +340,25 @@ public:
         addr.sin_addr.s_addr = inet_addr(ip.c_str());
         socklen_t len = sizeof(struct sockaddr_in);
         int ret = bind(_sockfd, (struct sockaddr *)&addr, len);
-        if(ret<0)
+        if (ret < 0)
         {
             ERR_LOG("BIND ADDRESS FAILED!!");
             return false;
         }
         return true;
     }
-    bool Listen(int backlog=Max_LISTEN)
+    bool Listen(int backlog = Max_LISTEN)
     {
-         int ret = listen(_sockfd, backlog);
-            if (ret < 0) {
-                ERR_LOG("SOCKET LISTEN FAILED!");
-                return false;
-            }
-            return true;
+        int ret = listen(_sockfd, backlog);
+        if (ret < 0)
+        {
+            ERR_LOG("SOCKET LISTEN FAILED!");
+            return false;
+        }
+        return true;
     }
 
-    bool Connect(const std::string& ip,uint16_t port)
+    bool Connect(const std::string &ip, uint16_t port)
     {
         struct sockaddr_in addr;
         addr.sin_family = AF_INET;
@@ -281,7 +366,7 @@ public:
         addr.sin_addr.s_addr = inet_addr(ip.c_str());
         socklen_t len = sizeof(struct sockaddr_in);
         int ret = connect(_sockfd, (struct sockaddr *)&addr, len);
-        if(ret<0)
+        if (ret < 0)
         {
             ERR_LOG("SOCKET CONNECT FAILED!!");
             return false;
@@ -292,9 +377,9 @@ public:
     int Accept()
     {
         int newfd = accept(_sockfd, NULL, NULL);
-        if(newfd<=0)
+        if (newfd <= 0)
         {
-            if(errno==EAGAIN||errno==EINTR)
+            if (errno == EAGAIN || errno == EINTR)
             {
                 return 0;
             }
@@ -303,12 +388,12 @@ public:
         return newfd;
     }
 
-    ssize_t Recv(void* buf,size_t len,int flag=0)
+    ssize_t Recv(void *buf, size_t len, int flag = 0)
     {
         ssize_t ret = recv(_sockfd, buf, len, flag);
-        if(ret<=0)
+        if (ret <= 0)
         {
-            if(errno==EAGAIN||errno==EINTR)
+            if (errno == EAGAIN || errno == EINTR)
             {
                 return 0;
             }
@@ -318,17 +403,17 @@ public:
         return ret;
     }
 
-    ssize_t NonBlockReve(void* buf,size_t len)
+    ssize_t NonBlockReve(void *buf, size_t len)
     {
         return Recv(buf, len, MSG_DONTWAIT);
     }
 
-    ssize_t Send(const void* buf,size_t len,int flag=0)
+    ssize_t Send(const void *buf, size_t len, int flag = 0)
     {
         ssize_t ret = send(_sockfd, buf, len, flag);
-        if(ret<=0)
+        if (ret <= 0)
         {
-            if(errno==EAGAIN||errno==EINTR)
+            if (errno == EAGAIN || errno == EINTR)
             {
                 return 0;
             }
@@ -337,46 +422,49 @@ public:
         }
         return ret;
     }
-    ssize_t NonBlockSend(void* buf,size_t len)
+    ssize_t NonBlockSend(void *buf, size_t len)
     {
         return Send(buf, len, MSG_DONTWAIT);
     }
 
     void Close()
     {
-        if(_sockfd!=-1)
+        if (_sockfd != -1)
         {
             close(_sockfd);
-            _sockfd = -1;  
+            _sockfd = -1;
         }
     }
 
-    bool CreateServer(uint16_t port,const std::string &ip="0.0.0.0")
+    bool CreateServer(uint16_t port, const std::string &ip = "0.0.0.0")
     {
-        //1.创建套接字,设置非阻塞
-        if(Create()==false)
+        // 1.创建套接字,设置非阻塞
+        if (Create() == false)
             return false;
         NonBlock();
 
         // 4.启动地址重用
         ReuseAddress();
         // 2.绑定地址
-        if(Bind(ip,port)==false)
+        if (Bind(ip, port) == false)
             return false;
         // 3.开始监听
-        if(Listen()==false)
+        if (Listen() == false)
             return false;
-        
+
         return true;
     }
-    bool CreateClient(uint16_t port, const std::string &ip) {
-            //1. 创建套接字，2.指向连接服务器
-            if (Create() == false) return false;
-            if (Connect(ip, port) == false) return false;
-            return true;
-        }
+    bool CreateClient(uint16_t port, const std::string &ip)
+    {
+        // 1. 创建套接字，2.指向连接服务器
+        if (Create() == false)
+            return false;
+        if (Connect(ip, port) == false)
+            return false;
+        return true;
+    }
 
-    //设置套接字选项--开启地址端口重用
+    // 设置套接字选项--开启地址端口重用
     void ReuseAddress()
     {
         int val = 1;
@@ -385,7 +473,7 @@ public:
         setsockopt(_sockfd, SOL_SOCKET, SO_REUSEPORT, (void *)&val, sizeof(int));
     }
 
-    //设置非阻塞
+    // 设置非阻塞
     void NonBlock()
     {
         int flag = fcntl(_sockfd, F_GETFL, 0);
@@ -405,7 +493,7 @@ class Channel
 private:
     int _fd;
     uint32_t _events;  // 当前需要监控的事件
-    uint32_t _revents; //当前需要连续触发的事件
+    uint32_t _revents; // 当前需要连续触发的事件
     EventLoop *_loop;
     using EventCallback = std::function<void()>;
     EventCallback _read_callback;
@@ -415,12 +503,10 @@ private:
     EventCallback _event_callback;
 
 public:
-    Channel(EventLoop* loop,int fd)
-    :_fd(fd)
-    ,_events(0)
-    ,_revents(0)
-    ,_loop(loop)
-    {}
+    Channel(EventLoop *loop, int fd)
+        : _fd(fd), _events(0), _revents(0), _loop(loop)
+    {
+    }
 
     int Fd()
     {
@@ -467,7 +553,6 @@ public:
     {
         _events |= EPOLLIN;
         Update();
-
     }
     void EnableWrite()
     {
@@ -478,19 +563,16 @@ public:
     {
         _events &= ~EPOLLIN;
         Update();
-
     }
     void DisableWrite()
     {
         _events &= ~EPOLLOUT;
         Update();
-
     }
     void DisableAll()
     {
         _events = 0;
         Update();
-
     }
 
     void Update();
@@ -498,32 +580,30 @@ public:
     // 事件处理，连续促发事件，就调用此函数，触发什么事件再去调用什么回调函数
     void HandleEvent()
     {
-        if((_revents&EPOLLIN)||(_revents&EPOLLRDHUP)||(_revents&EPOLLPRI))
+        if ((_revents & EPOLLIN) || (_revents & EPOLLRDHUP) || (_revents & EPOLLPRI))
         {
-            if(_event_callback)
-                _event_callback();
-            if(_read_callback)
+            if (_read_callback)
                 _read_callback();
-            
         }
 
-        if(_revents&EPOLLOUT)
+        if (_revents & EPOLLOUT)
         {
-            if(_event_callback)
-                _event_callback();
-            if(_write_callback)
+            if (_write_callback)
                 _write_callback();
         }
-        else if(_revents&EPOLLERR)
+        else if (_revents & EPOLLERR)
         {
-            if(_error_callback)
+            if (_error_callback)
                 _error_callback();
         }
-        else if(_revents&EPOLLHUP)
+        else if (_revents & EPOLLHUP)
         {
-            if(_close_callback)
-            _close_callback();
+            if (_close_callback)
+                _close_callback();
         }
+
+        if (_event_callback)
+            _event_callback();
     }
 };
 
@@ -536,26 +616,26 @@ private:
     std::unordered_map<int, Channel *> _channels;
 
 public:
-    void Update(Channel* channel,int op)
+    void Update(Channel *channel, int op)
     {
-        //int epoll_ctl(int epfd,int op,int fd,struct epoll_evevt* ev)
+        // int epoll_ctl(int epfd,int op,int fd,struct epoll_evevt* ev)
         int fd = channel->Fd();
         struct epoll_event ev;
         ev.data.fd = fd;
         ev.events = channel->Events();
         int ret = epoll_ctl(_epfd, op, fd, &ev);
-        if(ret<0)
+        if (ret < 0)
         {
             ERR_LOG("EPOLLCTL FAILED");
             abort();
         }
     }
 
-    //判断Channel是否被监控
-    bool HasChannel(Channel* channel)
+    // 判断Channel是否被监控
+    bool HasChannel(Channel *channel)
     {
         auto it = _channels.find(channel->Fd());
-        if(it==_channels.end())
+        if (it == _channels.end())
         {
             return false;
         }
@@ -563,55 +643,56 @@ public:
     }
 
 public:
-    Poller() 
+    Poller()
     {
-            _epfd = epoll_create(MAX_EPOLLEVENTS);
-            if (_epfd < 0) {
-                ERR_LOG("EPOLL CREATE FAILED!!");
-                abort();//退出程序
-            }
+        _epfd = epoll_create(MAX_EPOLLEVENTS);
+        if (_epfd < 0)
+        {
+            ERR_LOG("EPOLL CREATE FAILED!!");
+            abort(); // 退出程序
         }
-    //添加或修改监控事件
-    void UpdateEvent(Channel* channel)
+    }
+    // 添加或修改监控事件
+    void UpdateEvent(Channel *channel)
     {
         bool ret = HasChannel(channel);
-        if(ret==false)
+        if (ret == false)
         {
-            _channels.insert(std::make_pair(channel->Fd(),channel));
+            _channels.insert(std::make_pair(channel->Fd(), channel));
             return Update(channel, EPOLL_CTL_ADD);
         }
         return Update(channel, EPOLL_CTL_MOD);
     }
 
-    void RemoveEvent(Channel* channel)
+    void RemoveEvent(Channel *channel)
     {
         auto it = _channels.find(channel->Fd());
-        if(it!=_channels.end())
+        if (it != _channels.end())
         {
             _channels.erase(it);
         }
         Update(channel, EPOLL_CTL_DEL);
     }
 
-    //开始监控
-    void poll(std::vector<Channel*> *active)
+    // 开始监控
+    void poll(std::vector<Channel *> *active)
     {
-        //int epoll-wait(int epfd ,struct epoll_event*evs ,int maxevents ,int timeout)
+        // int epoll-wait(int epfd ,struct epoll_event*evs ,int maxevents ,int timeout)
         int nfds = epoll_wait(_epfd, _evs, MAX_EPOLLEVENTS, -1);
-        if(nfds<0)
+        if (nfds < 0)
         {
-            if(errno==EINTR)
+            if (errno == EINTR)
             {
                 return;
             }
             ERR_LOG("EPOLL WAIT ERROR:%s\n", strerror(errno));
             abort();
         }
-        for (int i = 0; i < nfds;i++)
+        for (int i = 0; i < nfds; i++)
         {
             auto it = _channels.find(_evs[i].data.fd);
             assert(it != _channels.end());
-            it->second->SetREvents(_evs[i].events);//设置实际就绪的事件
+            it->second->SetREvents(_evs[i].events); // 设置实际就绪的事件
             active->push_back(it->second);
         }
         return;
@@ -630,6 +711,7 @@ public:
 
     ~TimerTask()
     {
+        DBG_LOG("~TimerTask");
         _task_cb();
         _release();
     }
@@ -662,8 +744,8 @@ class TimerWheel
 public:
     void RemoveTimer(uint64_t id)
     {
-        auto it=_timers.find(id);
-        if(it!=_timers.end())
+        auto it = _timers.find(id);
+        if (it != _timers.end())
         {
             _timers.erase(id);
         }
@@ -671,42 +753,40 @@ public:
 
     static int CreatTimeFd()
     {
-        int timerfd=timerfd_create(CLOCK_MONOTONIC,0);
-        if(timerfd<0)
+        int timerfd = timerfd_create(CLOCK_MONOTONIC, 0);
+        if (timerfd < 0)
         {
             ERR_LOG("TIMERFD CREATE FAILED!!");
             abort();
         }
         struct itimerspec itime;
-        //第一次超时时间为一秒后
-        itime.it_value.tv_sec=1;
-        itime.it_value.tv_nsec=0;
-        //第一次超时后每一次超时的间隔时间
-        itime.it_interval.tv_sec=1;
-        itime.it_interval.tv_nsec=0;
-        timerfd_settime(timerfd,0,&itime,NULL);
+        // 第一次超时时间为一秒后
+        itime.it_value.tv_sec = 1;
+        itime.it_value.tv_nsec = 0;
+        // 第一次超时后每一次超时的间隔时间
+        itime.it_interval.tv_sec = 1;
+        itime.it_interval.tv_nsec = 0;
+        timerfd_settime(timerfd, 0, &itime, NULL);
         return timerfd;
     }
-
 
     void ReadHandle()
     {
         uint64_t timer;
-        int ret=read(_timerfd,&timer,8);
-        if(ret<0)
+        int ret = read(_timerfd, &timer, 8);
+        if (ret < 0)
         {
             ERR_LOG("READ TIMERFD FAILED!!");
             abort();
         }
     }
 
-    //该函数每秒应该被执行一次
+    // 该函数每秒应该被执行一次
     void RunTimerTask()
     {
-        _tick+=1;
-        _tick%=_capacity;
+        _tick += 1;
+        _tick %= _capacity;
         _wheel[_tick].clear();
-
     }
 
     void OnTime()
@@ -715,16 +795,13 @@ public:
         RunTimerTask();
     }
 
-
 public:
-    TimerWheel(EventLoop* loop)
-        : _tick(0), _capacity(60), _wheel(_capacity),_loop(loop)
-        ,_timerfd(CreatTimeFd()),_time_channel(new Channel(loop,_timerfd))
+    TimerWheel(EventLoop *loop)
+        : _tick(0), _capacity(60), _wheel(_capacity), _loop(loop), _timerfd(CreatTimeFd()), _time_channel(new Channel(loop, _timerfd))
     {
-        _time_channel->SetReadCallback(std::bind(&TimerWheel::OnTime,this));
-        _time_channel->ReadAble();
+        _time_channel->SetReadCallback(std::bind(&TimerWheel::OnTime, this));
+        _time_channel->EnableRead();
     }
-
 
     void TimerAddInLoop(uint64_t id, uint32_t timeout, const TaskFunc &cb)
     {
@@ -735,7 +812,6 @@ public:
         _wheel[pos].push_back(task);
         _timers[id] = WeakTask(task);
     }
-
 
     void TimerRefreshInLoop(uint64_t id)
     {
@@ -762,18 +838,16 @@ public:
             pt->Cancel();
     }
 
-
     void TimerRefresh(uint64_t id);
 
     void TimerAdd(uint64_t id, uint32_t timeout, const TaskFunc &cb);
-
 
     void TimerCancel(uint64_t id);
 
     bool HasTimer(uint64_t id)
     {
-        auto it=_timers.find(id);
-        if(it==_timers.end())
+        auto it = _timers.find(id);
+        if (it == _timers.end())
         {
             return false;
         }
@@ -785,38 +859,34 @@ private:
     int _capacity;
     std::vector<std::vector<PtrTask>> _wheel;
     std::unordered_map<uint64_t, WeakTask> _timers;
-    EventLoop* _loop;
+    EventLoop *_loop;
     int _timerfd;
     std::unique_ptr<Channel> _time_channel;
 };
 
-
-
-
 class EventLoop
 {
 private:
-
-    //事件触发的监控
+    // 事件触发的监控
     Poller _poller;
-    //首先得有个刷新事件的eventfd
+    // 首先得有个刷新事件的eventfd
     int _event_fd;
-    //管理event_fd的channel
+    // 管理event_fd的channel
     std::unique_ptr<Channel> _event_channel;
-    //任务队列
-    using Functor=std::function<void()>;
+    // 任务队列
+    using Functor = std::function<void()>;
     std::vector<Functor> _task;
-    //对任务队列操作时的锁
+    // 对任务队列操作时的锁
     std::mutex _mutex;
-    //线程id
+    // 线程id
     std::thread::id _thread_id;
 
     TimerWheel _timer_wheel;
 
     static int CreatEventFd()
     {
-        int efd=eventfd(0,EFD_CLOEXEC|EFD_NONBLOCK);
-        if(efd<0)
+        int efd = eventfd(0, EFD_CLOEXEC | EFD_NONBLOCK);
+        if (efd < 0)
         {
             ERR_LOG("CREATE EVENTFD FAILED!!");
             abort();
@@ -825,12 +895,12 @@ private:
     }
     void ReadEventFd()
     {
-        uint64_t res=0;
-        res=read(_event_fd,&res,sizeof(res));
-        if(res<0)
+        uint64_t res = 0;
+        res = read(_event_fd, &res, sizeof(res));
+        if (res < 0)
         {
-            //EINTR是被信号打断，EAGAIN无数据可读
-            if(errno==EINTR||errno==EAGAIN)
+            // EINTR是被信号打断，EAGAIN无数据可读
+            if (errno == EINTR || errno == EAGAIN)
             {
                 return;
             }
@@ -842,11 +912,11 @@ private:
 
     void WeakUpEventFd()
     {
-        uint64_t val=1;
-        int res=write(_event_fd,&val,sizeof(val));
-        if(res<0)
+        uint64_t val = 1;
+        int res = write(_event_fd, &val, sizeof(val));
+        if (res < 0)
         {
-            if(errno==EINTR)
+            if (errno == EINTR)
             {
                 return;
             }
@@ -858,105 +928,408 @@ private:
 
 public:
     EventLoop()
-    :_event_fd(CreatEventFd())
-    ,_thread_id(std::this_thread::get_id())
-    ,_event_channel(new Channel(this,_event_fd))
-    ,_timer_wheel(this)
+        : _event_fd(CreatEventFd()), _thread_id(std::this_thread::get_id()), _event_channel(new Channel(this, _event_fd)), _timer_wheel(this)
     {
-        _event_channel->SetReadCallback(std::bind(&EventLoop::ReadEventFd,this));
+        _event_channel->SetReadCallback(std::bind(&EventLoop::ReadEventFd, this));
         _event_channel->EnableRead();
     }
     void RunAllTask()
     {
         std::vector<Functor> functor;
         {
-            //上锁
+            // 上锁
             std::unique_lock<std::mutex> lock(_mutex);
             _task.swap(functor);
         }
-        for(auto &e: functor)
+        for (auto &e : functor)
         {
             e();
         }
     }
 
-
-     //把任务压入任务队列
-    void QueueInLoop(const Functor& cb)
+    // 把任务压入任务队列
+    void QueueInLoop(const Functor &cb)
     {
         {
             std::unique_lock<std::mutex> lock(_mutex);
             _task.push_back(cb);
         }
-        //唤醒可能因为没有事件就绪导致的堵塞
+        // 唤醒可能因为没有事件就绪导致的堵塞
 
         WeakUpEventFd();
     }
-    //判断任务是否是当前线程
+    // 判断任务是否是当前线程
     bool IsInLoop()
     {
-        return _thread_id==std::this_thread::get_id();
+        return _thread_id == std::this_thread::get_id();
     }
 
-    //用来看任务是否在当前线程是就运行任务，不是就压入任务队列
-    void RunInLoop(const Functor& cb)
+    // 用来看任务是否在当前线程是就运行任务，不是就压入任务队列
+    void RunInLoop(const Functor &cb)
     {
-        if(IsInLoop())
+        if (IsInLoop())
         {
             cb();
         }
-        QueueInLoop(cb);
+        else
+        {
+            QueueInLoop(cb);
+        }
     }
-   
 
-    //启动EventLoop
+    // 启动EventLoop
     void Start()
     {
-        //1.启动事件监控
-        std::vector<Channel*> actives;
+        // 1.启动事件监控
+        std::vector<Channel *> actives;
         _poller.poll(&actives);
-        //2.执行就绪的事件
-        for(auto e: actives)
+        // 2.执行就绪的事件
+        for (auto e : actives)
         {
             e->HandleEvent();
         }
-        //3.执行任务
+        // 3.执行任务
         RunAllTask();
-
     }
 
-    //添加或修改描述符的事件监控
-    void UpdateEvent(Channel* channel)
+    // 添加或修改描述符的事件监控
+    void UpdateEvent(Channel *channel)
     {
         return _poller.UpdateEvent(channel);
     }
 
-    void RemoveEvent(Channel* channel)
+    void RemoveEvent(Channel *channel)
     {
         return _poller.RemoveEvent(channel);
     }
 
-    //添加定时任务
-    void TimerAdd(uint64_t id,uint32_t dilay,const TaskFunc &cb)
+    // 添加定时任务
+    void TimerAdd(uint64_t id, uint32_t dilay, const TaskFunc &cb)
     {
-        return _timer_wheel.TimerAdd(id,dilay,cb);
+        return _timer_wheel.TimerAdd(id, dilay, cb);
     }
 
-    //刷新定时任务
+    // 刷新定时任务
     void TimerRefresh(uint64_t id)
     {
         return _timer_wheel.TimerRefresh(id);
     }
-    //删除定时任务
+    // 删除定时任务
     void TimerCancel(uint64_t id)
     {
         return _timer_wheel.TimerCancel(id);
     }
 
-    //判断是否有这个定时任务
+    // 判断是否有这个定时任务
     bool HasTimer(uint64_t id)
     {
         return _timer_wheel.HasTimer(id);
+    }
+};
+
+typedef enum
+{
+    DISCONNECTED,
+    CONNECTING,
+    CONNECTED,
+    DISCONNECTING
+} ConnStatu;
+
+class Connection;
+using PtrConnection = std::shared_ptr<Connection>;
+class Connection : public std::enable_shared_from_this<Connection>
+{
+private:
+    // Connection唯一id
+    uint64_t _conn_id;
+    // 判断是否开启非活跃销毁默认false
+    bool _enable_inactive_release;
+    // 状态
+
+    int _sockfd;
+    EventLoop *_loop;
+    ConnStatu _statu;
+    // 连接所关联的loop
+    Socket _socket;
+    Channel _channel;
+    Buffer _in_buffer;
+    Buffer _out_buffer;
+    Any _context; // 请求接收处理上下文
+
+    using ConnectedCallback = std::function<void(const PtrConnection &)>;
+    using MessageCallback = std::function<void(const PtrConnection &, Buffer *)>;
+    using CloseCallback = std::function<void(const PtrConnection &)>;
+    using AnyEventCallback = std::function<void(const PtrConnection &)>;
+
+    ConnectedCallback _connected_callback;
+    MessageCallback _message_callback;
+    CloseCallback _close_callback;
+    AnyEventCallback _event_callback;
+
+    // 还有一个组件内连接关闭回调,服务器组件内会把所有的连接管理起来，一旦要关闭，就要从管理的地方删除
+    CloseCallback _server_close_callback;
+
+private:
+    // 真正的删除
+    void ReleaseInloop()
+    {
+        // 1.修改连接状态
+        _statu = DISCONNECTED;
+        // 2.移除事件监控
+        _channel.Remove();
+        // 3.移除描述符
+        _socket.Close();
+        // 4.如果定时器有超时销毁任务就要取消，不然等定时任务到了销毁的就是空指针
+        if (_loop->HasTimer(_conn_id))
+            CancelInactiveRelease();
+        // 5.调用关闭回调
+        // 正常关闭回调
+        if (_close_callback)
+        {
+            _close_callback(shared_from_this());
+        }
+        // 组件关闭回调
+        if (_server_close_callback)
+        {
+            _server_close_callback(shared_from_this());
+        }
+    }
+    // 描述符可读后触发的函数，接收socket的数据放到接收缓冲区，然后调用_message_callback
+    void HandleRead()
+    {
+        char buf[65536];
+        ssize_t ret = _socket.NonBlockReve(buf, 65535);
+        if (ret < 0)
+        {
+            // 不能直接关闭
+            return ShutdownInloop();
+        }
+        _in_buffer.WritePush(buf, ret);
+
+        if (_in_buffer.ReadableSpace() > 0)
+        {
+            return _message_callback(shared_from_this(), &_in_buffer);
+        }
+    }
+    // 描述符可写后触发的函数，将发送缓冲区的数据进行发送
+    void HandleWrite()
+    {
+        // 先发送数据
+        ssize_t ret = _socket.NonBlockSend(_out_buffer.ReadPosition(), _out_buffer.ReadableSpace());
+        if (ret < 0)
+        {
+            // 如果发送失败就要关闭连接了，但是关闭前要先看看接收缓冲区有没有待处理的消息，如果有就先处理
+            if (_in_buffer.ReadableSpace() > 0)
+            {
+                return _message_callback(shared_from_this(), &_in_buffer);
+            }
+            return ReleaseInloop();
+        }
+        // 千万别忘记移动读偏移!!!!
+        _out_buffer.MoveReadOffset(ret);
+        // 如果发送缓冲区没有数据待发送，就关闭写事件监控
+        if (_out_buffer.ReadableSpace() == 0)
+        {
+            _channel.DisableWrite();
+        }
+        // 如果状态是待关闭并且没有数据发送就直接关闭
+        if (_statu == DISCONNECTING && _out_buffer.ReadableSpace() == 0)
+        {
+            return ReleaseInloop();
+        }
+        return;
+    }
+    void HandleClose()
+    {
+        // 一旦挂断，套接字就什么都干不了了，因此挂断前看看是否有数据待处理
+        if (_in_buffer.ReadableSpace() > 0)
+        {
+            return _message_callback(shared_from_this(), &_in_buffer);
+        }
+        return ReleaseInloop();
+    }
+    void HandleError()
+    {
+        return HandleClose();
+    }
+    void HandleEvent()
+    {
+        // 任意事件处理前，先看是否开启了非活跃销毁，如果开启了就先刷新
+        if (_enable_inactive_release == true)
+        {
+            _loop->TimerRefresh(_conn_id);
+        }
+        // 触发任意事件回调函数
+        if (_event_callback)
+        {
+            _event_callback(shared_from_this());
+        }
+    }
+    void SendInLoop(const char *date, size_t len)
+    {
+        if (_statu == DISCONNECTED)
+            return;
+        _out_buffer.WritePush(date, len);
+        if (_channel.WriteAble() == false)
+        {
+            _channel.EnableWrite();
+        }
+    }
+    // 这个关闭操作并非实际的连接释放操作，需要判断还有没有数据待处理，待发送
+    void ShutdownInloop()
+    {
+        _statu = DISCONNECTING; // 设置连接为半关闭状态
+        if (_in_buffer.ReadableSpace() > 0)
+        {
+            if (_message_callback)
+                _message_callback(shared_from_this(), &_in_buffer);
+        }
+        // 要么就是写入数据的时候出错关闭，要么就是没有待发送数据，直接关闭
+        if (_out_buffer.ReadableSpace() > 0)
+        {
+            if (_channel.WriteAble() == false)
+            {
+                _channel.EnableWrite();
+            }
+        }
+        if (_out_buffer.ReadableSpace() == 0)
+        {
+            ReleaseInloop();
+        }
+    }
+    // 启动非活跃连接超时释放规则
+    void EnableInactiveReleaseInLoop(int sec)
+    {
+        // 1. 将判断标志 _enable_inactive_release 置为true
+        _enable_inactive_release = true;
+        // 2. 如果当前定时销毁任务已经存在，那就刷新延迟一下即可
+        if (_loop->HasTimer(_conn_id))
+        {
+            return _loop->TimerRefresh(_conn_id);
+        }
+        // 3. 如果不存在定时销毁任务，则新增
+        _loop->TimerAdd(_conn_id, sec, std::bind(&Connection::ReleaseInloop, this));
+    }
+    void CancelInactiveReleaseInLoop()
+    {
+        _enable_inactive_release = false;
+        if (_loop->HasTimer(_conn_id))
+        {
+            _loop->TimerCancel(_conn_id);
+        }
+    }
+    void UpgradeInLoop(const Any &context,
+                       const ConnectedCallback &conn,
+                       const MessageCallback &msg,
+                       const CloseCallback &closed,
+                       const AnyEventCallback &event)
+    {
+        _context = context;
+        _connected_callback = conn;
+        _message_callback = msg;
+        _close_callback = closed;
+        _event_callback = event;
+    }
+    // 建立连接后要做的事
+    void EstablishedInloop()
+    {
+        // 修改连接状态
+        assert(_statu == CONNECTING);
+        _statu = CONNECTED;
+        // 启动读事件监控
+        _channel.EnableRead();
+        // 调用连接成功回调函数
+        if (_connected_callback)
+        {
+            return _connected_callback(shared_from_this());
+        }
+    }
+
+public:
+    Connection(EventLoop *loop, int sockfd, uint64_t id)
+        : _conn_id(id), _enable_inactive_release(false), _statu(CONNECTING), _sockfd(sockfd), _loop(loop), _socket(sockfd), _channel(loop, sockfd)
+    {
+        // 设置监控到各种事件后的回调函数
+        _channel.SetReadCallback(std::bind(&Connection::HandleRead, this));
+        _channel.SetWriteCallback(std::bind(&Connection::HandleWrite, this));
+        _channel.SetCloseCallback(std::bind(&Connection::HandleClose, this));
+        _channel.SetErrorCallback(std::bind(&Connection::HandleError, this));
+        _channel.SetEventCallback(std::bind(&Connection::HandleEvent, this));
+    }
+    ~Connection()
+    {
+        DBG_LOG("Connection的地址是%p", this);
+    }
+    // 返回文件描述符
+    int Fd()
+    {
+        return _sockfd;
+    }
+    uint64_t Id()
+    {
+        return _conn_id;
+    }
+    bool Connected()
+    {
+        return (_statu == CONNECTED);
+    }
+    void SetContext(const Any &context)
+    {
+        _context = context;
+    }
+    Any *GetContext()
+    {
+        return &_context;
+    }
+    void SetConnetedCallback(const ConnectedCallback &cb)
+    {
+        _connected_callback = cb;
+    }
+    void SetMessageCallback(const MessageCallback &cb)
+    {
+        _message_callback = cb;
+    }
+    void SetCloseCallback(const CloseCallback &cb)
+    {
+        _close_callback = cb;
+    }
+    void SetAnyEventCallback(const AnyEventCallback &cb)
+    {
+        _event_callback = cb;
+    }
+
+    void SetServerCloseCallback(const CloseCallback &cb)
+    {
+        _server_close_callback = cb;
+    }
+    // 将数据放到发送缓冲区，并开启写事件监控
+    void Send(const char *date, size_t len)
+    {
+        _loop->RunInLoop(std::bind(&Connection::SendInLoop, this, date, len));
+    }
+    // 提供给组件使用者的关闭接口，但并不实际关闭，要判断有没有数据待处理
+    void ShutDown()
+    {
+        _loop->RunInLoop(std::bind(&Connection::ShutdownInloop, this));
+    }
+    void Established()
+    {
+        _loop->RunInLoop(std::bind(&Connection::EstablishedInloop, this));
+    }
+    // 启动非活跃销毁,并规定多久为非活跃
+    void EnableInactiveRelease(int sec)
+    {
+        _loop->RunInLoop(std::bind(&Connection::EnableInactiveReleaseInLoop, this, sec));
+    }
+    // 删除非活跃销毁
+    void CancelInactiveRelease()
+    {
+        _loop->RunInLoop(std::bind(&Connection::CancelInactiveReleaseInLoop, this));
+    }
+    // 切换协议重置上下文
+    void Upgrade(const Any &context, const ConnectedCallback &conn, const MessageCallback &msg,
+                 const CloseCallback &close, const AnyEventCallback &anyevent)
+    {
     }
 };
 
@@ -969,19 +1342,17 @@ void Channel::Remove()
     _loop->RemoveEvent(this);
 }
 
-
 void TimerWheel::TimerRefresh(uint64_t id)
 {
-    _loop->RunInLoop(std::bind(&TimerWheel::TimerRefreshInLoop,this,id));
-}
-    
-void TimerWheel::TimerAdd(uint64_t id, uint32_t timeout, const TaskFunc &cb)
-{
-    _loop->RunInLoop(std::bind(&TimerWheel::TimerAddInLoop,this,id,timeout,cb));
+    _loop->RunInLoop(std::bind(&TimerWheel::TimerRefreshInLoop, this, id));
 }
 
+void TimerWheel::TimerAdd(uint64_t id, uint32_t timeout, const TaskFunc &cb)
+{
+    _loop->RunInLoop(std::bind(&TimerWheel::TimerAddInLoop, this, id, timeout, cb));
+}
 
 void TimerWheel::TimerCancel(uint64_t id)
 {
-    _loop->RunInLoop(std::bind(&TimerWheel::TimerCancelInLoop,this,id));
+    _loop->RunInLoop(std::bind(&TimerWheel::TimerCancelInLoop, this, id));
 }
