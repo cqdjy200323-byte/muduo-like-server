@@ -20,6 +20,7 @@
 #include <mutex>
 #include <thread>
 #include <sys/eventfd.h>
+#include <condition_variable>
 #include <sys/timerfd.h>
 
 static void SetNonBlock(int fd)
@@ -32,16 +33,16 @@ static void SetNonBlock(int fd)
 #define DBG 1
 #define ERR 2
 #define LOG_LEVEL DBG
-#define LOG(level, format, ...)                                                            \
-    do                                                                                     \
-    {                                                                                      \
-        if (level < LOG_LEVEL)                                                             \
-            break;                                                                         \
-        time_t t = time(NULL);                                                             \
-        struct tm *ltm = localtime(&t);                                                    \
-        char tmp[32] = {0};                                                                \
-        strftime(tmp, 31, "%H:%M:%S", ltm);                                                \
-        fprintf(stdout, "[%s %s:%d]" format "\n", tmp, __FILE__, __LINE__, ##__VA_ARGS__); \
+#define LOG(level, format, ...)                                                                                       \
+    do                                                                                                                \
+    {                                                                                                                 \
+        if (level < LOG_LEVEL)                                                                                        \
+            break;                                                                                                    \
+        time_t t = time(NULL);                                                                                        \
+        struct tm *ltm = localtime(&t);                                                                               \
+        char tmp[32] = {0};                                                                                           \
+        strftime(tmp, 31, "%H:%M:%S", ltm);                                                                           \
+        fprintf(stdout, "[%p %s %s:%d]" format "\n", (void *)pthread_self(), tmp, __FILE__, __LINE__, ##__VA_ARGS__); \
     } while (0)
 
 #define INF_LOG(format, ...) LOG(INF, format, ##__VA_ARGS__)
@@ -980,16 +981,19 @@ public:
     // 启动EventLoop
     void Start()
     {
-        // 1.启动事件监控
-        std::vector<Channel *> actives;
-        _poller.poll(&actives);
-        // 2.执行就绪的事件
-        for (auto e : actives)
+        while (1)
         {
-            e->HandleEvent();
+            // 1.启动事件监控
+            std::vector<Channel *> actives;
+            _poller.poll(&actives);
+            // 2.执行就绪的事件
+            for (auto e : actives)
+            {
+                e->HandleEvent();
+            }
+            // 3.执行任务
+            RunAllTask();
         }
-        // 3.执行任务
-        RunAllTask();
     }
 
     // 添加或修改描述符的事件监控
@@ -1165,11 +1169,11 @@ private:
             _event_callback(shared_from_this());
         }
     }
-    void SendInLoop(const char *date, size_t len)
+    void SendInLoop(Buffer &buf)
     {
         if (_statu == DISCONNECTED)
             return;
-        _out_buffer.WritePush(date, len);
+        _out_buffer.WriteBufferAndPush(buf);
         if (_channel.WriteAble() == false)
         {
             _channel.EnableWrite();
@@ -1305,7 +1309,9 @@ public:
     // 将数据放到发送缓冲区，并开启写事件监控
     void Send(const char *date, size_t len)
     {
-        _loop->RunInLoop(std::bind(&Connection::SendInLoop, this, date, len));
+        Buffer buf;
+        buf.WritePush(date, len);
+        _loop->RunInLoop(std::bind(&Connection::SendInLoop, this, buf));
     }
     // 提供给组件使用者的关闭接口，但并不实际关闭，要判断有没有数据待处理
     void ShutDown()
@@ -1330,6 +1336,88 @@ public:
     void Upgrade(const Any &context, const ConnectedCallback &conn, const MessageCallback &msg,
                  const CloseCallback &close, const AnyEventCallback &anyevent)
     {
+    }
+};
+
+class Acceptor
+{
+private:
+    Socket _socket;
+    EventLoop *_loop;
+    Channel _channel;
+    using AcceptCallback = std::function<void(int)>;
+    AcceptCallback _accept_callback;
+
+    void HandleRead()
+    {
+        int newfd = _socket.Accept();
+        if (newfd < 0)
+        {
+            return;
+        }
+        if (_accept_callback)
+            _accept_callback(newfd);
+    }
+
+    int CreatServer(int port)
+    {
+        bool ret = _socket.CreateServer(port);
+        assert(ret == true);
+        return _socket.Fd();
+    }
+
+public:
+    Acceptor(EventLoop *loop, int port)
+        : _socket(CreatServer(port)), _loop(loop), _channel(loop, _socket.Fd())
+    {
+        _channel.SetReadCallback(std::bind(&Acceptor::HandleRead, this));
+    }
+    void SetAcceptCallback(const AcceptCallback &cb)
+    {
+        _accept_callback = cb;
+    }
+    void Lisen()
+    {
+        _channel.EnableRead();
+    }
+};
+
+class LoopThread
+{
+
+private:
+    std::mutex _mutex;             // 互斥锁
+    std::condition_variable _cond; // 条件变量
+    EventLoop *_loop;              // Eventloop实例化对象，需要在线程内实例化
+    std::thread _thread;           // Eventloop对应的线程
+
+    void ThreadEntry()
+    {
+        EventLoop loop;
+        {
+            std::unique_lock<std::mutex> lock(_mutex);
+            _loop = &loop;
+            _cond.notify_all();
+        }
+        loop.Start();
+    }
+
+public:
+    // 创建线程，设定线程入口
+    LoopThread()
+        : _loop(NULL), _thread(std::thread(&LoopThread::ThreadEntry, this))
+    {
+    }
+    EventLoop *GetLoop()
+    {
+        EventLoop *loop = NULL;
+        {
+            std::unique_lock<std::mutex> lock(_mutex);
+            _cond.wait(lock, [&]()
+                       { return _loop != NULL; });
+            loop = _loop;
+        }
+        return loop;
     }
 };
 

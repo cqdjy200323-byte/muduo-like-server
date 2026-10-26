@@ -1,6 +1,9 @@
 #include "../source/server.hpp"
 
+EventLoop baseloop;
+std::vector<LoopThread> Threads(2);
 std::unordered_map<uint64_t, PtrConnection> conns;
+int nextloop = 0;
 void ConnectionClose(const PtrConnection &conn)
 {
     conns.erase(conn->Fd());
@@ -19,18 +22,11 @@ void OnMessage(const PtrConnection &conn, Buffer *buf)
     conn->Send(str.c_str(), str.size());
 }
 
-void Acceptor(EventLoop *loop, Channel *lst_channel)
+void Event(int fd)
 {
     uint64_t conn_id = rand() % 10000;
-    int fd = lst_channel->Fd();
-    int newfd = accept(fd, NULL, NULL);
-    SetNonBlock(newfd);
-    if (newfd < 0)
-    {
-        return;
-    }
-    Buffer buf;
-    PtrConnection conn(new Connection(loop, newfd, conn_id));
+    nextloop = (nextloop + 1) % 2;
+    PtrConnection conn(new Connection(Threads[nextloop].GetLoop(), fd, conn_id));
     conn->SetServerCloseCallback(std::bind(ConnectionClose, std::placeholders::_1));
     conn->SetConnetedCallback(std::bind(OnConnected, std::placeholders::_1));
     conn->SetMessageCallback(std::bind(OnMessage, std::placeholders::_1, std::placeholders::_2));
@@ -42,16 +38,12 @@ void Acceptor(EventLoop *loop, Channel *lst_channel)
 int main()
 {
     srand(time(NULL));
-    Socket lst_sock;
-    EventLoop loop;
-    lst_sock.CreateServer(8080);
-    Channel channel(&loop, lst_sock.Fd());
-    channel.SetReadCallback(std::bind(Acceptor, &loop, &channel));
-    channel.EnableRead();
+    Acceptor acceptor(&baseloop, 8080);
+    acceptor.SetAcceptCallback(std::bind(Event, std::placeholders::_1));
+    acceptor.Lisen();
     while (1)
     {
-        loop.Start();
+        baseloop.Start();
     }
-    lst_sock.Close();
     return 0;
 }
