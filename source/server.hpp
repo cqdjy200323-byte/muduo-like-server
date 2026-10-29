@@ -1,3 +1,5 @@
+#ifndef _M_SERVER_H_
+#define _M_SERVER_H_
 #define BUFFER_DEFAULT_SIZE 1024
 #include <iostream>
 #include <ctime>
@@ -21,6 +23,7 @@
 #include <thread>
 #include <sys/eventfd.h>
 #include <condition_variable>
+#include <signal.h>
 #include <sys/timerfd.h>
 
 static void SetNonBlock(int fd)
@@ -1222,13 +1225,13 @@ private:
             _loop->TimerCancel(_conn_id);
         }
     }
-    void UpgradeInLoop(const Any &context,
+    void UpgradeInLoop(const Any &constext,
                        const ConnectedCallback &conn,
                        const MessageCallback &msg,
                        const CloseCallback &closed,
                        const AnyEventCallback &event)
     {
-        _context = context;
+        _context = constext;
         _connected_callback = conn;
         _message_callback = msg;
         _close_callback = closed;
@@ -1458,6 +1461,120 @@ public:
     }
 };
 
+class TcpServer
+{
+private:
+    int _port;
+    uint64_t _next_id;
+    int _timeout;
+    bool _enable_inactive_release;
+    EventLoop _baseloop;
+    Acceptor _acceptor;
+    LoopThreadPool _pool;
+    std::unordered_map<uint64_t, PtrConnection> _conns;
+
+    using ConnectedCallback = std::function<void(const PtrConnection &)>;
+    using MessageCallback = std::function<void(const PtrConnection &, Buffer *)>;
+    using CloseCallback = std::function<void(const PtrConnection &)>;
+    using AnyEventCallback = std::function<void(const PtrConnection &)>;
+    using Functor = std::function<void()>;
+    ConnectedCallback _connected_callback;
+    MessageCallback _message_callback;
+    CloseCallback _close_callback;
+    AnyEventCallback _event_callback;
+    // 还有一个组件内连接关闭回调,服务器组件内会把所有的连接管理起来，一旦要关闭，就要从管理的地方删除
+    CloseCallback _server_close_callback;
+
+private:
+    void RunAfterInLoop(const Functor &task, int delay)
+    {
+        _next_id++;
+        _baseloop.TimerAdd(_next_id, delay, task);
+    }
+
+    void NewConnection(int fd) // 为新连接创建一个Connection
+    {
+        _next_id++;
+        PtrConnection conn(new Connection(_pool.NextLoop(), fd, _next_id));
+        conn->SetServerCloseCallback(std::bind(&TcpServer::RemoveConnection, this, std::placeholders::_1));
+        conn->SetConnetedCallback(_connected_callback);
+        conn->SetMessageCallback(_message_callback);
+        conn->SetAnyEventCallback(_event_callback);
+        conn->SetCloseCallback(_close_callback);
+        conn->EnableInactiveRelease(10);
+        conn->Established();
+        _conns.insert(std::make_pair(_next_id, conn));
+    }
+
+    void RemoveConnectionInLoop(const PtrConnection &conn)
+    {
+        int id = conn->Id();
+        auto it = _conns.find(id);
+        if (it != _conns.end())
+        {
+            _conns.erase(it);
+        }
+    }
+    void RemoveConnection(const PtrConnection &conn) // 从管理的conns中删除Connection
+    {
+        _baseloop.RunInLoop(std::bind(&TcpServer::RemoveConnectionInLoop, this, conn));
+    }
+
+public:
+    TcpServer(int port)
+        : _port(port), _next_id(0), _enable_inactive_release(false), _acceptor(&_baseloop, port), _pool(&_baseloop)
+    {
+        _acceptor.SetAcceptCallback(std::bind(&TcpServer::NewConnection, this, std::placeholders::_1));
+        _acceptor.Lisen();
+    }
+
+    // 设置线程吃内线程数量
+    void SetThreadCount(int count)
+    {
+        return _pool.SetThreadCount(count);
+    }
+
+    // 设置定时任务
+    void RunAfter(const Functor &task, int delay)
+    {
+        _baseloop.RunInLoop(std::bind(&TcpServer::RunAfterInLoop, this, task, delay));
+    }
+    // 设置是否开启非活跃超时销毁
+    void EnableInacticeRelease(int timeout)
+    {
+        _timeout = timeout;
+        _enable_inactive_release = true;
+    }
+
+    // 启动服务器
+    void Start()
+    {
+        _pool.Create();
+        return _baseloop.Start();
+    }
+
+    void SetConnetedCallback(const ConnectedCallback &cb)
+    {
+        _connected_callback = cb;
+    }
+    void SetMessageCallback(const MessageCallback &cb)
+    {
+        _message_callback = cb;
+    }
+    void SetCloseCallback(const CloseCallback &cb)
+    {
+        _close_callback = cb;
+    }
+    void SetAnyEventCallback(const AnyEventCallback &cb)
+    {
+        _event_callback = cb;
+    }
+
+    void SetServerCloseCallback(const CloseCallback &cb)
+    {
+        _server_close_callback = cb;
+    }
+};
 void Channel::Update()
 {
     _loop->UpdateEvent(this);
@@ -1481,3 +1598,15 @@ void TimerWheel::TimerCancel(uint64_t id)
 {
     _loop->RunInLoop(std::bind(&TimerWheel::TimerCancelInLoop, this, id));
 }
+
+class NetWork
+{
+public:
+    NetWork()
+    {
+        signal(SIGPIPE, SIG_IGN);
+    }
+};
+
+static NetWork nw;
+#endif

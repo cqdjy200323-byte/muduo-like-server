@@ -1,9 +1,9 @@
 #include "../source/server.hpp"
 
 EventLoop baseloop;
-std::vector<LoopThread> Threads(2);
+int conn_id = 1;
 std::unordered_map<uint64_t, PtrConnection> conns;
-int nextloop = 0;
+LoopThreadPool *pool;
 void ConnectionClose(const PtrConnection &conn)
 {
     conns.erase(conn->Fd());
@@ -24,9 +24,8 @@ void OnMessage(const PtrConnection &conn, Buffer *buf)
 
 void Event(int fd)
 {
-    uint64_t conn_id = rand() % 10000;
-    nextloop = (nextloop + 1) % 2;
-    PtrConnection conn(new Connection(Threads[nextloop].GetLoop(), fd, conn_id));
+    conn_id++;
+    PtrConnection conn(new Connection(pool->NextLoop(), fd, conn_id));
     conn->SetServerCloseCallback(std::bind(ConnectionClose, std::placeholders::_1));
     conn->SetConnetedCallback(std::bind(OnConnected, std::placeholders::_1));
     conn->SetMessageCallback(std::bind(OnMessage, std::placeholders::_1, std::placeholders::_2));
@@ -37,13 +36,12 @@ void Event(int fd)
 
 int main()
 {
-    srand(time(NULL));
+    pool = new LoopThreadPool(&baseloop);
+    pool->SetThreadCount(2);
+    pool->Create();
     Acceptor acceptor(&baseloop, 8080);
     acceptor.SetAcceptCallback(std::bind(Event, std::placeholders::_1));
     acceptor.Lisen();
-    while (1)
-    {
-        baseloop.Start();
-    }
+    baseloop.Start();
     return 0;
 }
