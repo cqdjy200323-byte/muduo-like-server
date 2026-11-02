@@ -716,7 +716,10 @@ public:
     ~TimerTask()
     {
         DBG_LOG("~TimerTask");
-        _task_cb();
+        if (_canceled == false)
+        {
+            _task_cb();
+        }
         _release();
     }
 
