@@ -30,4 +30,5 @@ example/regex
 example/request
 example/timewheel
 test/client
-test/serversource/main
+test/server
+source/main
