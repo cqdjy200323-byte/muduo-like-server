@@ -11,3 +11,5 @@ target_link_libraries(echo pthread)    # echo 需要链接线程库
 add_executable(test_server test/server.cc)
 target_link_libraries(test_server pthread) 
 add_executable(asan_demo example/asan_demo.cc)
+add_executable(weak_ptr_demo example/weak_ptr_demo.cc)
+add_executable(ctor_demo example/ctor_demo.cc)

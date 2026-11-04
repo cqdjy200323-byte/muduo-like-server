@@ -499,6 +499,8 @@ private:
     uint32_t _events;  // 当前需要监控的事件
     uint32_t _revents; // 当前需要连续触发的事件
     EventLoop *_loop;
+    std::weak_ptr<void> _tie;
+    bool _tied = false;
     using EventCallback = std::function<void()>;
     EventCallback _read_callback;
     EventCallback _write_callback;
@@ -511,7 +513,11 @@ public:
         : _fd(fd), _events(0), _revents(0), _loop(loop)
     {
     }
-
+    void Tie(const std::shared_ptr<void> &conn)
+    {
+        _tie = conn;
+        _tied = true;
+    }
     int Fd()
     {
         return _fd;
@@ -584,6 +590,13 @@ public:
     // 事件处理，连续促发事件，就调用此函数，触发什么事件再去调用什么回调函数
     void HandleEvent()
     {
+        std::shared_ptr<void> guard;
+        if (_tied)
+        {
+            guard = _tie.lock();
+            if (!guard)
+                return;
+        }
         if ((_revents & EPOLLIN) || (_revents & EPOLLRDHUP) || (_revents & EPOLLPRI))
         {
             if (_read_callback)
@@ -1246,6 +1259,7 @@ private:
         // 修改连接状态
         assert(_statu == CONNECTING);
         _statu = CONNECTED;
+        _channel.Tie(shared_from_this());
         // 启动读事件监控
         _channel.EnableRead();
         // 调用连接成功回调函数
