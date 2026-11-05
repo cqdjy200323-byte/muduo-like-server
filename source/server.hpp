@@ -1361,10 +1361,12 @@ public:
     {
         _loop->RunInLoop(std::bind(&Connection::CancelInactiveReleaseInLoop, shared_from_this()));
     }
-    // 切换协议重置上下文
+    // 切换协议：只能在连接所属的 loop 线程中调用，切换立即生效
     void Upgrade(const Any &context, const ConnectedCallback &conn, const MessageCallback &msg,
                  const CloseCallback &close, const AnyEventCallback &anyevent)
     {
+        assert(_loop->IsInLoop());
+        return UpgradeInLoop(context, conn, msg, close, anyevent);
     }
 };
 
