@@ -20,7 +20,7 @@ int main()
 {
     TcpServer server(8080);
     server.SetThreadCount(2);
-    server.EnableInacticeRelease(10);
+    server.EnableInactiveRelease(10);
     server.SetConnetedCallback(OnConnected);
     server.SetCloseCallback(OnClose);
     server.SetMessageCallback(OnMessage);

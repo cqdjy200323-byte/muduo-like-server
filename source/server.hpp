@@ -1565,7 +1565,7 @@ public:
         _baseloop.RunInLoop(std::bind(&TcpServer::RunAfterInLoop, this, task, delay));
     }
     // 设置是否开启非活跃超时销毁
-    void EnableInacticeRelease(int timeout)
+    void EnableInactiveRelease(int timeout)
     {
         _timeout = timeout;
         _enable_inactive_release = true;
