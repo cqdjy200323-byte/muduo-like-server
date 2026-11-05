@@ -916,8 +916,8 @@ private:
     void ReadEventFd()
     {
         uint64_t res = 0;
-        res = read(_event_fd, &res, sizeof(res));
-        if (res < 0)
+        ssize_t ret = read(_event_fd, &res, sizeof(res));
+        if (ret < 0)
         {
             // EINTR是被信号打断，EAGAIN无数据可读
             if (errno == EINTR || errno == EAGAIN)
