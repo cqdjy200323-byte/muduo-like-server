@@ -1167,7 +1167,7 @@ private:
         // 如果状态是待关闭并且没有数据发送就直接关闭
         if (_statu == DISCONNECTING && _out_buffer.ReadableSpace() == 0)
         {
-            return ReleaseInloop();
+            return Release();
         }
         return;
     }
