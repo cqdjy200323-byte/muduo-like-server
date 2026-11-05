@@ -1094,6 +1094,11 @@ private:
 
 private:
     // 真正的删除
+
+    void Release()
+    {
+        _loop->QueueInLoop(std::bind(&Connection::ReleaseInloop, shared_from_this()));
+    }
     void ReleaseInloop()
     {
         if (_statu == DISCONNECTED)
@@ -1150,7 +1155,7 @@ private:
             {
                 return _message_callback(shared_from_this(), &_in_buffer);
             }
-            return ReleaseInloop();
+            return Release();
         }
         // 千万别忘记移动读偏移!!!!
         _out_buffer.MoveReadOffset(ret);
@@ -1173,7 +1178,7 @@ private:
         {
             return _message_callback(shared_from_this(), &_in_buffer);
         }
-        return ReleaseInloop();
+        return Release();
     }
     void HandleError()
     {
@@ -1221,7 +1226,7 @@ private:
         }
         if (_out_buffer.ReadableSpace() == 0)
         {
-            ReleaseInloop();
+            Release();
         }
     }
     // 启动非活跃连接超时释放规则
