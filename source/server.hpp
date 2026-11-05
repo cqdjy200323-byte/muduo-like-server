@@ -26,11 +26,7 @@
 #include <signal.h>
 #include <sys/timerfd.h>
 
-static void SetNonBlock(int fd)
-{
-    int flag = fcntl(fd, F_GETFL, 0);
-    fcntl(fd, F_SETFL, flag | O_NONBLOCK);
-}
+
 
 #define INF 0
 #define DBG 1
