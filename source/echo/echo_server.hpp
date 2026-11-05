@@ -27,6 +27,7 @@ public:
         : _server(port)
     {
         _server.SetThreadCount(3);
+        _server.EnableInacticeRelease(10);
         _server.SetConnetedCallback(std::bind(&EchoServer::OnConnected, this, std::placeholders::_1));
         _server.SetCloseCallback(std::bind(&EchoServer::OnClose, this, std::placeholders::_1));
         _server.SetMessageCallback(std::bind(&EchoServer::OnMessage, this, std::placeholders::_1, std::placeholders::_2));

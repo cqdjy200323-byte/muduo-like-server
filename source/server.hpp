@@ -1527,7 +1527,8 @@ private:
         conn->SetMessageCallback(_message_callback);
         conn->SetAnyEventCallback(_event_callback);
         conn->SetCloseCallback(_close_callback);
-        conn->EnableInactiveRelease(10);
+        if (_enable_inactive_release)
+            conn->EnableInactiveRelease(_timeout);
         conn->Established();
         _conns.insert(std::make_pair(_next_id, conn));
     }
@@ -1548,7 +1549,7 @@ private:
 
 public:
     TcpServer(int port)
-        : _port(port), _next_id(0), _enable_inactive_release(false), _acceptor(&_baseloop, port), _pool(&_baseloop)
+        : _port(port), _next_id(0), _enable_inactive_release(false), _acceptor(&_baseloop, port), _pool(&_baseloop), _timeout(0)
     {
         _acceptor.SetAcceptCallback(std::bind(&TcpServer::NewConnection, this, std::placeholders::_1));
         _acceptor.Lisen();
