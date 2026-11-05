@@ -176,9 +176,9 @@ public:
     }
 
     // 检测空间是否足够（不够就扩容）
-    bool SpaceEnough(int len)
+    bool SpaceEnough(uint64_t len)
     {
-        if (WriteOffsetSpace() > len)
+        if (WriteOffsetSpace() >= len)
         {
             return false;
         }
@@ -196,15 +196,15 @@ public:
         return true;
     }
     // 将读偏移向后移动
-    void MoveReadOffset(int len)
+    void MoveReadOffset(uint64_t len)
     {
         assert(ReadableSpace() >= len);
         _reader_idx += len;
     }
     // 将写偏移向后移动
-    void MoveWriteOffset(int len)
+    void MoveWriteOffset(uint64_t len)
     {
-        assert(WriteOffsetSpace() > len);
+        assert(WriteOffsetSpace() >= len);
         _writer_idx += len;
     }
 
