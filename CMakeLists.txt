@@ -1,6 +1,7 @@
 cmake_minimum_required(VERSION 3.13)   # 要求的最低 cmake 版本
 project(muduo_like CXX)                # 项目名，CXX 表示是 C++ 项目
 set(CMAKE_CXX_STANDARD 11)             # 用 C++11 标准
+add_compile_options(-Wall -Wextra)
 option(ASAN "开启 AddressSanitizer" OFF)   # 定义一个开关，默认关闭
 if(ASAN)
   add_compile_options(-fsanitize=address -fno-omit-frame-pointer -g)
