@@ -1340,26 +1340,26 @@ public:
     {
         Buffer buf;
         buf.WritePush(date, len);
-        _loop->RunInLoop(std::bind(&Connection::SendInLoop, this, buf));
+        _loop->RunInLoop(std::bind(&Connection::SendInLoop, shared_from_this(), buf));
     }
     // 提供给组件使用者的关闭接口，但并不实际关闭，要判断有没有数据待处理
     void ShutDown()
     {
-        _loop->RunInLoop(std::bind(&Connection::ShutdownInloop, this));
+        _loop->RunInLoop(std::bind(&Connection::ShutdownInloop, shared_from_this()));
     }
     void Established()
     {
-        _loop->RunInLoop(std::bind(&Connection::EstablishedInloop, this));
+        _loop->RunInLoop(std::bind(&Connection::EstablishedInloop, shared_from_this()));
     }
     // 启动非活跃销毁,并规定多久为非活跃
     void EnableInactiveRelease(int sec)
     {
-        _loop->RunInLoop(std::bind(&Connection::EnableInactiveReleaseInLoop, this, sec));
+        _loop->RunInLoop(std::bind(&Connection::EnableInactiveReleaseInLoop, shared_from_this(), sec));
     }
     // 删除非活跃销毁
     void CancelInactiveRelease()
     {
-        _loop->RunInLoop(std::bind(&Connection::CancelInactiveReleaseInLoop, this));
+        _loop->RunInLoop(std::bind(&Connection::CancelInactiveReleaseInLoop, shared_from_this()));
     }
     // 切换协议重置上下文
     void Upgrade(const Any &context, const ConnectedCallback &conn, const MessageCallback &msg,
