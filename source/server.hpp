@@ -1153,7 +1153,7 @@ private:
             // 如果发送失败就要关闭连接了，但是关闭前要先看看接收缓冲区有没有待处理的消息，如果有就先处理
             if (_in_buffer.ReadableSpace() > 0)
             {
-                return _message_callback(shared_from_this(), &_in_buffer);
+                _message_callback(shared_from_this(), &_in_buffer);
             }
             return Release();
         }
@@ -1176,7 +1176,7 @@ private:
         // 一旦挂断，套接字就什么都干不了了，因此挂断前看看是否有数据待处理
         if (_in_buffer.ReadableSpace() > 0)
         {
-            return _message_callback(shared_from_this(), &_in_buffer);
+            _message_callback(shared_from_this(), &_in_buffer);
         }
         return Release();
     }
