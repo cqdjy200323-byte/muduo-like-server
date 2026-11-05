@@ -1096,6 +1096,10 @@ private:
     // 真正的删除
     void ReleaseInloop()
     {
+        if(_statu==DISCONNECTED)
+        {
+            return ;
+        }
         // 1.修改连接状态
         _statu = DISCONNECTED;
         // 2.移除事件监控
