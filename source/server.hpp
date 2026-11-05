@@ -687,8 +687,8 @@ public:
         if (it != _channels.end())
         {
             _channels.erase(it);
+            Update(channel, EPOLL_CTL_DEL);
         }
-        Update(channel, EPOLL_CTL_DEL);
     }
 
     // 开始监控
@@ -1096,9 +1096,9 @@ private:
     // 真正的删除
     void ReleaseInloop()
     {
-        if(_statu==DISCONNECTED)
+        if (_statu == DISCONNECTED)
         {
-            return ;
+            return;
         }
         // 1.修改连接状态
         _statu = DISCONNECTED;
