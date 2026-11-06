@@ -394,7 +394,7 @@ public:
             if (ret == 0)
             {
 
-                DBG_LOG("SOCKET RECV FAILED!!");
+                DBG_LOG("PEER CLOSED, fd=%d", _sockfd);
                 return -1;
             }
             else
@@ -403,6 +403,7 @@ public:
                 {
                     return 0;
                 }
+                ERR_LOG("SOCKET RECV FAILED: %s", strerror(errno));
                 return -1;
             }
         }
@@ -417,7 +418,7 @@ public:
     ssize_t Send(const void *buf, size_t len, int flag = 0)
     {
         ssize_t ret = send(_sockfd, buf, len, flag);
-        if (ret <= 0)
+        if (ret < 0)
         {
             if (errno == EAGAIN || errno == EINTR)
             {
