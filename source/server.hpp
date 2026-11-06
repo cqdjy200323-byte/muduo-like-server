@@ -26,8 +26,6 @@
 #include <signal.h>
 #include <sys/timerfd.h>
 
-
-
 #define INF 0
 #define DBG 1
 #define ERR 2
@@ -393,12 +391,20 @@ public:
         ssize_t ret = recv(_sockfd, buf, len, flag);
         if (ret <= 0)
         {
-            if (errno == EAGAIN || errno == EINTR)
+            if (ret == 0)
             {
-                return 0;
+
+                DBG_LOG("SOCKET RECV FAILED!!");
+                return -1;
             }
-            ERR_LOG("SOCKET RECV FAILED!!");
-            return -1;
+            else
+            {
+                if (errno == EAGAIN || errno == EINTR)
+                {
+                    return 0;
+                }
+                return -1;
+            }
         }
         return ret;
     }
