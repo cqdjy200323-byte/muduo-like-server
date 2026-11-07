@@ -25,6 +25,7 @@
 #include <condition_variable>
 #include <signal.h>
 #include <sys/timerfd.h>
+#include <any>
 
 #define INF 0
 #define DBG 1
@@ -45,87 +46,6 @@
 #define INF_LOG(format, ...) LOG(INF, format, ##__VA_ARGS__)
 #define DBG_LOG(format, ...) LOG(DBG, format, ##__VA_ARGS__)
 #define ERR_LOG(format, ...) LOG(ERR, format, ##__VA_ARGS__)
-
-class Any
-{
-private:
-    class holder
-    {
-    public:
-        virtual ~holder();
-        virtual const std::type_info &tipe();
-        virtual holder *clone();
-    };
-
-    template <class T>
-    class placeholder : public holder
-    {
-    public:
-        placeholder(const T val)
-            : _val(val)
-        {
-        }
-
-        virtual const std::type_info &type()
-        {
-            return typeid(T);
-        }
-        virtual holder *clone()
-        {
-            return new placeholder(_val);
-        }
-
-    public:
-        T _val;
-    };
-    holder *_content;
-
-public:
-    Any()
-        : _content(NULL)
-    {
-    }
-    template <class T>
-    Any(const T &val)
-        : _content(new placeholder<T>(val))
-    {
-    }
-
-    Any(const Any &other)
-        : _content(other._content ? other._content->clone() : NULL)
-    {
-    }
-
-    ~Any()
-    {
-        delete _content;
-    }
-
-    Any &swap(Any &other)
-    {
-        std::swap(_content, other._content);
-        return *this;
-    }
-
-    template <class T>
-    T Swap(const T &val)
-    {
-        placeholder<T> a;
-        std::swap(_content, a);
-    }
-
-    template <class T>
-    Any &operator=(const T &val)
-    {
-        Any(val).swap(*this);
-        return *this;
-    }
-    Any &operator=(const Any &other)
-    {
-        Any(other).swap(*this);
-        return *this;
-    }
-};
 
 class Buffer
 {
@@ -1080,7 +1000,7 @@ private:
     Channel _channel;
     Buffer _in_buffer;
     Buffer _out_buffer;
-    Any _context; // 请求接收处理上下文
+    std::any _context; // 请求接收处理上下文
 
     using ConnectedCallback = std::function<void(const PtrConnection &)>;
     using MessageCallback = std::function<void(const PtrConnection &, Buffer *)>;
@@ -1253,13 +1173,13 @@ private:
             _loop->TimerCancel(_conn_id);
         }
     }
-    void UpgradeInLoop(const Any &constext,
+    void UpgradeInLoop(const std::any &context,
                        const ConnectedCallback &conn,
                        const MessageCallback &msg,
                        const CloseCallback &closed,
                        const AnyEventCallback &event)
     {
-        _context = constext;
+        _context = context;
         _connected_callback = conn;
         _message_callback = msg;
         _close_callback = closed;
@@ -1309,11 +1229,11 @@ public:
     {
         return (_statu == CONNECTED);
     }
-    void SetContext(const Any &context)
+    void SetContext(const std::any &context)
     {
         _context = context;
     }
-    Any *GetContext()
+    std::any *GetContext()
     {
         return &_context;
     }
@@ -1365,7 +1285,7 @@ public:
         _loop->RunInLoop(std::bind(&Connection::CancelInactiveReleaseInLoop, shared_from_this()));
     }
     // 切换协议：只能在连接所属的 loop 线程中调用，切换立即生效
-    void Upgrade(const Any &context, const ConnectedCallback &conn, const MessageCallback &msg,
+    void Upgrade(const std::any &context, const ConnectedCallback &conn, const MessageCallback &msg,
                  const CloseCallback &close, const AnyEventCallback &anyevent)
     {
         assert(_loop->IsInLoop());
