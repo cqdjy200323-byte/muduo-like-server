@@ -33,3 +33,4 @@ test/client
 test/server
 source/main
 build-asan/
+build-release/
